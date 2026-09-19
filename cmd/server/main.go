@@ -1,8 +1,12 @@
 package main
 
-import "github.com/gin-gonic/gin"
+import (
+	"chatapp/internal/router"
+	"chatapp/internal/store"
+)
 
 func main() {
-	r := gin.Default()
+	s := store.New()
+	r := router.New(s)
 	r.Run(":9090")
 }
