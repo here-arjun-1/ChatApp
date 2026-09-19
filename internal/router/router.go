@@ -1,9 +1,9 @@
 package router
-<<<<<<< HEAD
-=======
 
 import (
 	"github.com/gin-gonic/gin"
+
+	"chatapp/internal/handlers"
 )
 
 func New() *gin.Engine {
@@ -13,4 +13,3 @@ func New() *gin.Engine {
 
 	return r
 }
->>>>>>> f0c79c5 (feat: add health router)
