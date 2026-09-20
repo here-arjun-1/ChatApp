@@ -38,6 +38,7 @@ func New(s *store.Store, hub *ws.Hub) *gin.Engine {
 	chatHandler := handlers.NewChatHandler(s)
 	wsHandler := handlers.NewWSHandler(s, hub)
 
+	r.StaticFile("/", "./static/index.html")
 	r.GET("/health", handlers.Health)
 	r.POST("/messages", chatHandler.SendMessage)
 	r.GET("/messages", chatHandler.GetHistory)
