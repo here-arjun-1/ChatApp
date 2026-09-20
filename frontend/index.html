@@ -18,7 +18,7 @@
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
+    background: radial-gradient(circle at 50% 0%, #142127 0%, var(--bg) 60%);
     color: var(--text);
     height: 100vh;
     display: flex;
@@ -29,33 +29,57 @@
   /* Login screen */
   #login {
     background: var(--panel);
-    padding: 32px;
-    border-radius: 12px;
-    width: 300px;
+    padding: 40px 32px;
+    border-radius: 16px;
+    width: 320px;
     text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
   }
-  #login h2 { margin-top: 0; }
+  #login .logo {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #login .logo svg { width: 32px; height: 32px; fill: #fff; }
+  #login h2 { margin: 0 0 6px; font-size: 22px; }
+  #login .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
   #login input {
     width: 100%;
-    padding: 10px;
-    margin: 12px 0;
+    padding: 12px 14px;
+    margin: 0 0 16px;
     border-radius: 8px;
-    border: none;
+    border: 1.5px solid transparent;
     background: #2a3942;
     color: var(--text);
     font-size: 15px;
+    outline: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  #login input::placeholder { color: var(--muted); }
+  #login input:focus {
+    border-color: var(--accent);
+    background: #2f3f48;
   }
   #login button {
     width: 100%;
-    padding: 10px;
+    padding: 12px;
     border-radius: 8px;
     border: none;
     background: var(--accent);
     color: #fff;
     font-size: 15px;
+    font-weight: 600;
     cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
   }
-  #login .status { font-size: 13px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+  #login button:hover { background: #06cf9c; }
+  #login button:active { transform: scale(0.98); }
+  #login .status { font-size: 13px; color: #f77; margin-top: 12px; min-height: 16px; }
 
   /* Chat screen */
   #chat {
@@ -75,6 +99,7 @@
     align-items: center;
   }
   #header .name { font-weight: 600; }
+  #header .typing-indicator { font-size: 12px; color: var(--accent); font-style: italic; min-height: 14px; }
   #header .conn-status { font-size: 12px; color: var(--muted); }
   #header .conn-status.online { color: var(--accent); }
 
@@ -99,6 +124,13 @@
     color: var(--muted);
     margin-top: 4px;
     text-align: right;
+  }
+  .ticks {
+    margin-left: 4px;
+    color: var(--muted);
+  }
+  .ticks.read {
+    color: #53bdeb;
   }
   .bubble.me {
     align-self: flex-end;
@@ -142,20 +174,27 @@
 <body>
 
   <div id="login">
+    <div class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.03 2 11c0 2.61 1.28 4.95 3.32 6.62L4 22l4.71-1.55C9.99 20.8 10.98 21 12 21c5.52 0 10-4.03 10-9s-4.48-9-10-9z"/></svg>
+    </div>
     <h2>ChatApp</h2>
-    <input id="usernameInput" type="text" placeholder="Apna naam likho" />
-    <button onclick="startChat()">Chat shuru karo</button>
+    <div class="subtitle">Enter your name to start chatting</div>
+    <input id="usernameInput" type="text" placeholder="Your name" onkeydown="if(event.key==='Enter') startChat()" autofocus />
+    <button onclick="startChat()">Start Chat</button>
     <div class="status" id="loginStatus"></div>
   </div>
 
   <div id="chat">
     <div id="header">
-      <div class="name" id="myName"></div>
+      <div>
+        <div class="name" id="myName"></div>
+        <div class="typing-indicator" id="typingIndicator"></div>
+      </div>
       <div class="conn-status" id="connStatus">Connecting...</div>
     </div>
     <div id="messages"></div>
     <div id="inputRow">
-      <input id="messageInput" type="text" placeholder="Message likho..." onkeydown="if(event.key==='Enter') sendMessage()" />
+      <input id="messageInput" type="text" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendMessage()" oninput="handleTyping()" />
       <button onclick="sendMessage()">&#10148;</button>
     </div>
   </div>
@@ -167,12 +206,15 @@
 
   let username = "";
   let socket = null;
+  let isTyping = false;
+  let typingTimeout = null;
+  const TYPING_IDLE_MS = 1500;
 
   function startChat() {
     const input = document.getElementById("usernameInput");
     const name = input.value.trim();
     if (!name) {
-      document.getElementById("loginStatus").textContent = "Naam daalna zaroori hai";
+      document.getElementById("loginStatus").textContent = "Please enter your name";
       return;
     }
     username = name;
@@ -180,7 +222,6 @@
     document.getElementById("chat").style.display = "flex";
     document.getElementById("myName").textContent = username;
 
-    loadHistory();
     connectWebSocket();
   }
 
@@ -188,6 +229,7 @@
     try {
       const res = await fetch(`${BACKEND_HTTP}/messages`);
       const data = await res.json();
+      document.getElementById("messages").innerHTML = "";
       data.forEach(renderMessage);
       scrollToBottom();
     } catch (err) {
@@ -201,17 +243,17 @@
     socket.onopen = () => {
       document.getElementById("connStatus").textContent = "Online";
       document.getElementById("connStatus").classList.add("online");
+      loadHistory();
     };
 
     socket.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      renderMessage(msg);
-      scrollToBottom();
+      handleIncoming(JSON.parse(event.data));
     };
 
     socket.onclose = () => {
       document.getElementById("connStatus").textContent = "Disconnected — reconnecting...";
       document.getElementById("connStatus").classList.remove("online");
+      document.getElementById("typingIndicator").textContent = "";
       setTimeout(connectWebSocket, 2000);
     };
 
@@ -220,30 +262,93 @@
     };
   }
 
+  function handleIncoming(msg) {
+    switch (msg.type) {
+      case "message":
+        renderMessage(msg.data);
+        scrollToBottom();
+        break;
+      case "typing":
+        if (msg.from !== username) {
+          document.getElementById("typingIndicator").textContent = "typing...";
+        }
+        break;
+      case "stop_typing":
+        if (msg.from !== username) {
+          document.getElementById("typingIndicator").textContent = "";
+        }
+        break;
+      case "read":
+        markMessagesRead(msg.ids);
+        break;
+    }
+  }
+
+  function handleTyping() {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    if (!isTyping) {
+      isTyping = true;
+      socket.send(JSON.stringify({ type: "typing" }));
+    }
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+      isTyping = false;
+      socket.send(JSON.stringify({ type: "stop_typing" }));
+    }, TYPING_IDLE_MS);
+  }
+
   function sendMessage() {
     const input = document.getElementById("messageInput");
     const content = input.value.trim();
     if (!content || !socket || socket.readyState !== WebSocket.OPEN) return;
 
-    socket.send(JSON.stringify({ content }));
+    socket.send(JSON.stringify({ type: "message", content }));
     input.value = "";
 
-    renderMessage({ from: username, content, created_at: new Date().toISOString() });
-    scrollToBottom();
+    clearTimeout(typingTimeout);
+    if (isTyping) {
+      isTyping = false;
+      socket.send(JSON.stringify({ type: "stop_typing" }));
+    }
   }
 
   function renderMessage(msg) {
     const div = document.createElement("div");
     const isMe = msg.from === username;
     div.className = "bubble " + (isMe ? "me" : "other");
+    div.dataset.id = msg.id;
 
     const time = new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const ticks = isMe
+      ? `<span class="ticks ${msg.read ? "read" : ""}">${msg.read ? "&#10003;&#10003;" : "&#10003;"}</span>`
+      : "";
 
     div.innerHTML = `
       <div>${escapeHtml(msg.content)}</div>
-      <div class="meta">${isMe ? "You" : escapeHtml(msg.from)} · ${time}</div>
+      <div class="meta">${isMe ? "You" : escapeHtml(msg.from)} · ${time}${ticks}</div>
     `;
     document.getElementById("messages").appendChild(div);
+
+    if (!isMe && !msg.read) {
+      sendReadReceipt([msg.id]);
+    }
+  }
+
+  function sendReadReceipt(ids) {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !ids.length) return;
+    socket.send(JSON.stringify({ type: "read", ids }));
+  }
+
+  function markMessagesRead(ids) {
+    (ids || []).forEach((id) => {
+      const bubble = document.querySelector(`.bubble[data-id="${id}"]`);
+      const tick = bubble && bubble.querySelector(".ticks");
+      if (tick) {
+        tick.innerHTML = "&#10003;&#10003;";
+        tick.classList.add("read");
+      }
+    });
   }
 
   function scrollToBottom() {
